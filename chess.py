@@ -32,7 +32,7 @@ class Problem:
             tuple(sorted(state["obstacles"]))
         )
 
-    def pawn_track(self):
+    def pawn_track(self, state):
         return {location: "alive" for number, location in enumerate(self.initial["pawns"])}
 
     # First heuristic function
