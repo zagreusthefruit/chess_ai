@@ -5,23 +5,23 @@ import copy
 
 
 class Problem:
-    def __init__(self, initial, goal, size):
+    def __init__(self, initial, size):
         self.initial = initial
-        self.goal = goal
         self.size = size
         self.state_dictionary()
-        self.pawn_dictionary = self.pawn_track(self.initial)
+        self.pawn_dictionary = self.pawn_track()
 
     def state_dictionary(self):
         if "bishop" not in self.initial:
-            states["bishop"] = None
+            self.initial["bishop"] = None
         if "rook" not in self.initial:
-            states["rook"] = None
+            self.initial["rook"] = None
         if "knight" not in self.initial:
-            states["knight"] = None
+            self.initial["knight"] = None
 
     def is_goal(self, state):
-        return state["pawns"] == []
+        if all(current_pawn == "captured" for current_pawn in self.pawn_dictionary.values()):
+            return True
 
     def state_track(self, state):
         return (
@@ -32,8 +32,8 @@ class Problem:
             tuple(sorted(state["obstacles"]))
         )
 
-    def pawn_track(self, state):
-        return {location: "alive" for number, location in enumerate(self.initial["pawns"])}
+    def pawn_track(self):
+        return {location: "alive" for location in self.initial["pawns"]}
 
     # First heuristic function
 
@@ -90,7 +90,7 @@ class Problem:
 
     # Movements
 
-    def move_bishop(self, N, states, cost):
+    def move_bishop(self, N, states, cost, pawn_dictionary):
         new_states = []
         if states["bishop"] is None:
             return new_states
@@ -100,9 +100,7 @@ class Problem:
         for dx, dy in directions:
             x, y = initial_x, initial_y
             # Borders
-            while True:
-                if not (0 <= x < N and 0 <= y < N):
-                    break
+            while 0 <= x < N and 0 <= y < N:
                 # Move in the same direction
                 x += dx
                 y += dy
@@ -114,9 +112,10 @@ class Problem:
                 current_cost = cost + 10
                 # When encountered, capture the pawn
                 new_state = copy.deepcopy(states)
-                new_state["pawns"] = [(p0, p1) for (p0, p1) in new_state["pawns"] if (p0, p1) != (x, y)]
+                new_pawn_dictionary = copy.deepcopy(pawn_dictionary)
                 if (x, y) in states["pawns"]:
-                    self.pawn_dictionary[(x, y)] = "captured"
+                    new_pawn_dictionary[(x, y)] = "captured"
+                    new_state["pawns"].remove((x,y))
                     new_state["bishop"] = (x, y)
                     new_states.append((new_state, current_cost))
                     break
@@ -124,9 +123,9 @@ class Problem:
                 new_state["bishop"] = (x, y)
                 new_states.append((new_state, current_cost))
                 # print(f"Cost: {current_cost}")
-        return new_states, pawn_dictionary
+        return new_states, new_pawn_dictionary
 
-    def move_rook(self, N, states, cost):
+    def move_rook(self, N, states, cost, pawn_dict):
         new_states = []
         if states["rook"] is None:
             return new_states
@@ -136,9 +135,7 @@ class Problem:
         for dx, dy in directions:
             x, y = initial_x, initial_y
             # Borders
-            while True:
-                if not (0 <= x < N and 0 <= y < N):
-                    break
+            while 0 <= x < N and 0 <= y < N:
                 x += dx
                 y += dy
                 # Stop when there is a stone other than a pawn
@@ -149,9 +146,10 @@ class Problem:
                 current_cost = cost + 8
                 # When encountered, delete the pawn
                 new_state = copy.deepcopy(states)
-                new_state["pawns"] = [(p0, p1) for (p0, p1) in new_state["pawns"] if (p0, p1) != (x, y)]
+                new_pawn_dictionary = copy.deepcopy(pawn_dict)
                 if (x, y) in states["pawns"]:
-                    self.pawn_dictionary[(x, y)] = "captured"
+                    new_pawn_dictionary[(x, y)] = "captured"
+                    new_state["pawns"].remove((x,y))
                     new_state["rook"] = (x, y)
                     new_states.append((new_state, current_cost))
                     break
@@ -159,9 +157,9 @@ class Problem:
                 new_state["rook"] = (x, y)
                 new_states.append((new_state, current_cost))
                 # print(f"Cost: {current_cost}")
-        return new_states, pawn_dictionary
+        return new_states, new_pawn_dictionary
 
-    def move_knight(self, N, states, cost):
+    def move_knight(self, N, states, cost, pawn_dict):
         new_states = []
         if states["knight"] is None:
             return new_states
@@ -172,9 +170,7 @@ class Problem:
         for dx, dy in directions:
             x, y = initial_x, initial_y
             # Borders
-            while True:
-                if not (0 <= x < N and 0 <= y < N):
-                    break
+            while 0 <= x < N and 0 <= y < N:
                 x += dx
                 y += dy
                 # Stop when there is a stone other than a pawn
@@ -185,9 +181,10 @@ class Problem:
                 current_cost = cost + 8
                 # When encountered, delete the pawn
                 new_state = copy.deepcopy(states)
-                new_state["pawns"] = [(p0, p1) for (p0, p1) in new_state["pawns"] if (p0, p1) != (x, y)]
+                new_pawn_dictionary = copy.deepcopy(pawn_dict)
                 if (x, y) in states["pawns"]:
-                    self.pawn_dictionary[(x, y)] = "captured"
+                    new_pawn_dictionary[(x, y)] = "captured"
+                    new_state["pawns"].remove((x,y))
                     new_state["knight"] = (x, y)
                     new_states.append((new_state, current_cost))
                     break
@@ -195,13 +192,13 @@ class Problem:
                 new_state["knight"] = (x, y)
                 new_states.append((new_state, current_cost))
                 # print(f"Cost: {current_cost}")
-        return new_states, pawn_dictionary
+        return new_states, new_pawn_dictionary
 
     # Expand the nodes
-    def expand(self, state, moves, cost):
+    def expand(self, state, moves, cost, pawn_dict):
         successors = []
         for piece, action in moves.items():
-            state_list, pawn_dict = action(self.size, state, cost)
+            state_list, pawn_dict = action(self.size, state, cost, pawn_dict)
             for new_state, last_cost in state_list:
                 g_cost = cost + last_cost  # real cost
                 h2_cost = self.h2(new_state)  # estimated cost
@@ -224,12 +221,12 @@ def uniform_cost_search(problem, moves):
     fringe = []  # create a heap
     expanded_nodes = 0
     # (cumulative cost, state, previous state)
-    heapq.heappush(fringe, (0, problem.initial))
+    heapq.heappush(fringe, (0, problem.initial, problem.pawn_dictionary))
 
     while fringe:
         expanded_nodes += 1
         # remove and return the smallest element
-        cost, state = heapq.heappop(fringe)
+        cost, state, pawn = heapq.heappop(fringe)
 
         if problem.is_goal(state):
             print(f"Expanded: {expanded_nodes}")
@@ -239,7 +236,7 @@ def uniform_cost_search(problem, moves):
 
         closed.add(problem.state_track(state))
 
-        for new_state, new_cost, _, _, pawn_dict in problem.expand(state, moves, cost):
+        for new_state, new_cost, _, _, pawn_dict in problem.expand(state, moves, cost, pawn):
             if problem.state_track(new_state) not in closed:
                 closed.add(problem.state_track(new_state))
                 heapq.heappush(
@@ -257,25 +254,25 @@ def greedy_search(problem, moves):
     expanded_nodes = 0
     initial_h1_cost = problem.h1(problem.initial)
     initial_h2_cost = problem.h2(problem.initial)
-    print(f"h1: {initial_h1_cost}")
-    print(f"h2: {initial_h2_cost}")
 
     heapq.heappush(fringe, (initial_h1_cost +
-                   initial_h2_cost, problem.initial))
+                   initial_h2_cost, problem.initial, problem.pawn_dictionary))
 
     while fringe:
         expanded_nodes += 1
-        cost, state = heapq.heappop(fringe)
+        cost, state, pawn = heapq.heappop(fringe)
 
         if problem.is_goal(state):
+            print("Goal reached!")
             print(f"Expanded: {expanded_nodes}")
             print(f"Path-cost: {cost}")
-            print("Goal reached!")
+            print(f"h1: {initial_h1_cost}")
+            print(f"h2: {initial_h2_cost}")
             return state
 
     closed.add(problem.state_track(state))
 
-    for new_state, new_cost, _, _, pawn_dict in problem.expand(state, moves, cost):
+    for new_state, new_cost, _, _, pawn_dict in problem.expand(state, moves, cost, pawn):
         if problem.state_track not in closed:
             closed.add(problem.state_track(state))
             heapq.heappush(
@@ -294,24 +291,25 @@ def a_star_search(problem, moves):
     initial_g_cost = 0
     initial_h1_cost = problem.h1(problem.initial)
     initial_h2_cost = problem.h2(problem.initial)
-    print(f"h1: {initial_h1_cost}")
-    print(f"h2: {initial_h2_cost}")
     state_tuple = problem.state_track(problem.initial)
     heapq.heappush(
-        fringe, (initial_h1_cost+initial_h2_cost, initial_g_cost, state_tuple, problem.initial))
+        fringe, (initial_h1_cost+initial_h2_cost, initial_g_cost, state_tuple, problem.initial, problem.pawn_dictionary))
 
     while fringe:
         expanded_nodes += 1
-        f_cost, g_cost, _, state = heapq.heappop(fringe)
+        f_cost, g_cost, _, state, pawn_state = heapq.heappop(fringe)
 
         if problem.is_goal(state):
+            print("Goal reached!")
             print(f"Expanded: {expanded_nodes}")
             print(f"Path-cost: {g_cost}")
-            print("Goal reached!")
+            print(f"h1: {initial_h1_cost}")
+            print(f"h2: {initial_h2_cost}")
             return state
+
         closed.add(problem.state_track(state))
         # total cost is computed after expanding the node, based on the new state's general cost and its corresponding heuristic cost
-        for new_state, new_g_cost, _, _, pawn_dict in problem.expand(state, moves, g_cost):
+        for new_state, new_g_cost, _, _, pawn_dict in problem.expand(state, moves, g_cost, pawn_state):
             key = problem.state_track(new_state)
             if key not in closed:
                 closed.add(key)
@@ -347,7 +345,7 @@ def board(N, state, pawn_dictionary):
         if pawn_dictionary[location] == "captured":
             board[location[0]][location[1]] = "."
         else:
-            board[location[0]][location[1]] = str(i + 1) 
+            board[location[0]][location[1]] = str(i + 1)
 
     for place in state["obstacles"]:
         if 0 <= place[0] < N and 0 <= place[1] < N:
@@ -366,8 +364,8 @@ states = {
 }
 
 board_size = 5
-problem = Problem(initial=states, goal={"pawns": []}, size=board_size)
-pawn_dictionary = problem.pawn_track(states)
+problem = Problem(initial=states, size=board_size)
+pawn_dictionary = problem.pawn_track()
 
 moves = {
     "bishop": problem.move_bishop,
