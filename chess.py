@@ -1,5 +1,6 @@
 import heapq  # smallest element is always at the root
 import copy
+import time
 
 
 # Priority
@@ -36,11 +37,36 @@ direction_precedence = {
 
 
 class Problem:
-    def __init__(self, initial, pawns, size):
-        self.initial = initial
-        self.pawns = pawns
-        self.size = size
+    def __init__(self, board_state):
+        self.initial, self.pawns, self.size = self.parse_board(board_state)
         self.state_dictionary()
+
+    @staticmethod
+    def parse_board(board_state):
+        states = {
+            "bishop": None,
+            "rook": None,
+            "knight": None,
+            "obstacles": []
+        }
+        with open(board_state, 'r') as f:
+            lines = f.readlines()
+        rows = [line.strip().split() for line in lines]
+        pawn_states = []
+        board_size = len(rows)
+        for x in range(board_size):
+            for y, rank in enumerate(rows[x]):
+                if rank == 'B':
+                    states["bishop"] = (x, y)
+                elif rank == 'R':
+                    states["rook"] = (x, y)
+                elif rank == 'K':
+                    states["knight"] = (x, y)
+                elif rank == 'X' or rank == 'x':
+                    states["obstacles"].append((x, y))
+                elif rank.isdigit():
+                    pawn_states.append((x, y))
+        return states, pawn_states, board_size
 
     def state_dictionary(self):
         if "bishop" not in self.initial:
@@ -51,8 +77,7 @@ class Problem:
             self.initial["knight"] = None
 
     def is_goal(self, pawns):
-        if pawns == []:
-            return True
+        return len(pawns) == 0
 
     def state_track(self, state):
         return (
@@ -133,17 +158,16 @@ class Problem:
                 x += dx
                 y += dy
                 # Stop when there is a stone other than a pawn
-                if (x, y) in state["obstacles"] or state["bishop"] or state["knight"]:
+                if (x, y) not in state["obstacles"]:
                     last_cost = cost + 10
                     # When encountered, capture the pawn
-                    new_state = copy.deepcopy(states)
+                    new_state = copy.deepcopy(state)
                     new_pawns = pawns[:]
                     if (x, y) in new_pawns:
                         new_pawns.remove((x, y))
-                    
-                    new_state["bishop"] = (x, y)
 
-                new_states.append((new_state, new_pawns, last_cost))
+                    new_state["bishop"] = (x, y)
+                    new_states.append((new_state, new_pawns, last_cost))
         return new_states
 
     def move_rook(self, N, state, pawns, cost):
@@ -161,17 +185,16 @@ class Problem:
                 x += dx
                 y += dy
                 # Stop when there is a stone other than a pawn
-                if (x, y) not in state["obstacles"] or state["bishop"] or state["knight"]:
+                if (x, y) not in state["obstacles"]:
                     last_cost = cost + 8
                     # When encountered, delete the pawn
-                    new_state = copy.deepcopy(states)
+                    new_state = copy.deepcopy(state)
                     new_pawns = pawns[:]
                     if (x, y) in new_pawns:
                         new_pawns.remove((x, y))
-                    
-                    new_state["rook"] = (x, y)
 
-                new_states.append((new_state, new_pawns, last_cost))
+                    new_state["rook"] = (x, y)
+                    new_states.append((new_state, new_pawns, last_cost))
         return new_states
 
     def move_knight(self, N, state, pawns, cost):
@@ -189,22 +212,22 @@ class Problem:
                 x += dx
                 y += dy
                 # Stop when there is a stone other than a pawn
-                if (x, y) not in state["obstacles"] or state["bishop"] or state["rook"]:
+                if (x, y) not in state["obstacles"]:
                     current_cost = cost + 8
                     # When encountered, delete the pawn
-                    new_state = copy.deepcopy(states)
+                    new_state = copy.deepcopy(state)
                     new_pawns = pawns[:]
                     if (x, y) in new_pawns:
                         new_pawns.remove((x, y))
 
                     new_state["knight"] = (x, y)
-
-                new_states.append((new_state, new_pawns, current_cost))
+                    new_states.append((new_state, new_pawns, current_cost))
         return new_states
 
     # Expand the nodes
     def expand(self, state, pawns, cost):
         successors = []
+        state_list = []
         pieces = sorted(stone_precedence.items(), key=lambda x: x[1])
         for piece, _ in pieces:
             if piece == "bishop_precedence" and state["bishop"] != None:
@@ -234,74 +257,101 @@ class Problem:
 # Graph Search
 
 
-def uniform_cost_search(problem):
+def uniform_cost_search(problem, output):
     closed = set()
     fringe = []  # create a heap
     expanded_nodes = 0
+    state_tuple = problem.state_track(problem.initial)
+    start_time = time.time()
     # (cumulative cost, state, previous state)
-    heapq.heappush(fringe, (0, problem.initial, problem.pawns))
+    heapq.heappush(fringe, (0, state_tuple, problem.initial, problem.pawns))
 
-    while fringe:
-        expanded_nodes += 1
-        # remove and return the smallest element
-        cost, state, pawn = heapq.heappop(fringe)
+    output_lines = []
+    with open(output, 'w') as f:
+        while fringe:
+            expanded_nodes += 1
+            # remove and return the smallest element
+            cost, _, state, pawn = heapq.heappop(fringe)
 
-        if problem.is_goal(pawn):
-            print(f"Expanded: {expanded_nodes}")
-            print(f"Path-cost: {cost}")
-            print("Board state:")
-            board(state, pawn, problem)
-            return "Goal reached!"  # if the solution is found
+            if problem.is_goal(pawn):
+                output_lines.insert(0, f"Expanded nodes: {expanded_nodes}\n")
+                output_lines.insert(1, f"Path-cost: {cost}\n")
+                output_lines.append(board(state, pawn, problem))
+                end_time = time.time()
+                output_lines.append(
+                    f"Execution time: {end_time - start_time:.4f} seconds\n")
+                break
 
-        closed.add(problem.state_track(state))
+            closed.add(problem.state_track(state))
 
-        for new_state, new_pawn, new_cost, _, _ in problem.expand(state, pawn, cost):
-            if problem.state_track(new_state) not in closed:
-                closed.add(problem.state_track(new_state))
-                heapq.heappush(
-                    fringe, (new_cost, new_state, new_pawn))
-        print("Board state:")
-        board(state, pawn, problem)
-    return "No solution."  # if there is no solution
+            for new_state, new_pawn, new_cost, _, _ in problem.expand(state, pawn, cost):
+                key = problem.state_track(new_state)
+                if key not in closed:
+                    closed.add(key)
+                    heapq.heappush(
+                        fringe, (new_cost, key, new_state, new_pawn))
+                    
+            output_lines.append(board(state, pawn, problem))
+
+    end_time = time.time()
+    output_lines.append(
+        f"Execution time: {end_time - start_time:.4f} seconds\n")
+    output_lines.insert(0, f"Uniform Cost Search\nExpanded nodes: {expanded_nodes}\n")
+    output_lines.insert(1, f"Path-cost: {cost}\n")
+    with open(output, 'w') as f:
+        f.writelines(output_lines)
+    return None
 
 
-def greedy_search(problem):
+def greedy_search(problem, output):
     closed = set()
     fringe = []
     expanded_nodes = 0
     initial_h1_cost = problem.h1(problem.initial, problem.pawns)
     initial_h2_cost = problem.h2(problem.initial, problem.pawns)
-
+    state_tuple = problem.state_track(problem.initial)
+    start_time = time.time()
     heapq.heappush(fringe, (initial_h1_cost +
-                   initial_h2_cost, problem.initial, problem.pawns))
+                   initial_h2_cost, state_tuple, problem.initial, problem.pawns))
+    output_lines = []
+    output_lines.append(f"Initial h1: {initial_h1_cost}\n")
+    output_lines.append(f"Initial h2: {initial_h2_cost}\n")
 
-    while fringe:
-        expanded_nodes += 1
-        # looks for order when there is a tie
-        cost, state, pawn = heapq.heappop(fringe)
-
-        if problem.is_goal(pawn):
-            print(f"Expanded: {expanded_nodes}")
-            print(f"Path-cost: {cost}")
-            print(f"h1: {initial_h1_cost}")
-            print(f"h2: {initial_h2_cost}")
-            print("Board state:")
-            board(state, pawn, problem)
-            return "Goal reached!"
+    with open(output, 'w') as f:
+        while fringe:
+            expanded_nodes += 1
+            h_cost, _, state, pawn = heapq.heappop(fringe)
+            if problem.is_goal(pawn):
+                output_lines.insert(0, f"Expanded nodes: {expanded_nodes}\n")
+                output_lines.insert(1, f"Path-cost: {h_cost}\n")
+                output_lines.append(board(state, pawn, problem))
+                end_time = time.time()
+                output_lines.append(
+                    f"Execution time: {end_time - start_time:.4f} seconds\n")
+            break
 
     closed.add(problem.state_track(state))
 
-    for new_state, new_pawn, new_cost, _, _ in problem.expand(state, pawn, cost):
-        if problem.state_track not in closed:
-            closed.add(problem.state_track(state))
+    for new_state, new_pawn, new_cost, _, _ in problem.expand(state, pawn, h_cost):
+        key = problem.state_track(new_state)
+        if key not in closed:
+            closed.add(key)
             heapq.heappush(
-                fringe, (new_cost, new_state, new_pawn))
-        print("Board state:")
-        board(state, pawn, problem)
-    return "No solution."
+                fringe, (new_cost, key, new_state, new_pawn))
+
+            output_lines.append(board(state, pawn, problem))
+
+    end_time = time.time()
+    output_lines.append(
+        f"Execution time: {end_time - start_time:.4f} seconds\n")
+    output_lines.insert(0, f"Greedy Search\nExpanded nodes: {expanded_nodes}\n")
+    output_lines.insert(1, f"Path-cost: {h_cost}\n")
+    with open(output, 'w') as f:
+        f.writelines(output_lines)
+    return None
 
 
-def a_star_search(problem):
+def a_star_search(problem, output):
     closed = set()
     fringe = []
     expanded_nodes = 0
@@ -309,54 +359,68 @@ def a_star_search(problem):
     initial_h1_cost = problem.h1(problem.initial, problem.pawns)
     initial_h2_cost = problem.h2(problem.initial, problem.pawns)
     state_tuple = problem.state_track(problem.initial)
-    breakpoint()
+    start_time = time.time()
     heapq.heappush(
         fringe, (initial_h1_cost+initial_h2_cost, initial_g_cost, state_tuple, problem.initial, problem.pawns))
 
-    while fringe:
-        expanded_nodes += 1
-        f_cost, g_cost, _, state, pawn = heapq.heappop(fringe)
-        if problem.is_goal(pawn):
-            print(f"Expanded: {expanded_nodes}")
-            print(f"Path-cost: {g_cost}")
-            print(f"h1: {initial_h1_cost}")
-            print(f"h2: {initial_h2_cost}")
-            print("Board state:")
-            board(state, pawn, problem)
-            return "Goal reached!"
+    output_lines = []
 
-        closed.add(problem.state_track(state))
-        # total cost is computed after expanding the node, based on the new state's general cost and its corresponding heuristic cost
-        for new_state, new_pawn, new_g_cost, _, _ in problem.expand(state, pawn, g_cost):
-            key = problem.state_track(new_state)
-            if key not in closed:
-                closed.add(key)
-                h_cost = problem.h_combined(new_state, new_pawn)
-                new_f_cost = h_cost + new_g_cost
-                heapq.heappush(
-                    fringe, (new_f_cost, new_g_cost, key, new_state, new_pawn))
-        print("Board state:")
-        board(state, new_pawn, problem)
+    output_lines.append(f"Initial h1: {initial_h1_cost}\n")
+    output_lines.append(f"Initial h2: {initial_h2_cost}\n")
 
-    return "No solution."
+    with open(output, 'w') as f:
+        while fringe:
+            expanded_nodes += 1
+            f_cost, g_cost, _, state, pawn = heapq.heappop(fringe)
+            if problem.is_goal(pawn):
+                output_lines.insert(0, f"Expanded nodes: {expanded_nodes}\n")
+                output_lines.insert(1, f"Path-cost: {g_cost}\n")
+                output_lines.append(board(state, pawn, problem) + "\n")
+                end_time = time.time()
+                output_lines.append(
+                    f"Execution time: {end_time - start_time:.4f} seconds\n")
+                break
+
+            closed.add(problem.state_track(state))
+            # total cost is computed after expanding the node, based on the new state's general cost and its corresponding heuristic cost
+            for new_state, new_pawn, new_g_cost, _, _ in problem.expand(state, pawn, g_cost):
+                key = problem.state_track(new_state)
+                if key not in closed:
+                    closed.add(key)
+                    h_cost = problem.h_combined(new_state, new_pawn)
+                    new_f_cost = h_cost + new_g_cost
+                    heapq.heappush(
+                        fringe, (new_f_cost, new_g_cost, key, new_state, new_pawn))
+
+            output_lines.append(board(state, pawn, problem))
+
+
+    end_time = time.time()
+    output_lines.append(
+        f"Execution time: {end_time - start_time:.4f} seconds\n")
+    output_lines.insert(0, f"A* Search:\nExpanded nodes: {expanded_nodes}\n")
+    output_lines.insert(1, f"Path-cost: {g_cost}\n")
+    with open(output, 'w') as f:
+        f.writelines(output_lines)
+
+    return None
 
 
 # Display board
 
 
-
 def board(state, pawn, problem):
-    print(state)
     N = problem.size
+    board_representation = []
     board = [["." for i in range(N)] for j in range(N)]
     pawn_represent = copy.deepcopy(problem.pawns)
 
     for location in pawn_represent:
         if location in pawn:
-            board[location[0]][location[1]] = str(pawn_represent.index(location) + 1)
+            board[location[0]][location[1]] = str(
+                pawn_represent.index(location) + 1)
         else:
             board[location[0]][location[1]] = "."
-            
 
     for place in state["obstacles"]:
         if 0 <= place[0] < N and 0 <= place[1] < N:
@@ -375,21 +439,15 @@ def board(state, pawn, problem):
             board[state["knight"][0]][state["knight"][1]] = "K"
 
     for row in board:
-        print(" ".join(row))
-    print("*"*(N+5))
+        board_representation.append(" ".join(row))
+    board_representation.append("*" * (2 * N - 1) + "\n")
+
+    return "\n".join(board_representation)
 
 
-states = {
-    "bishop": (0, 0),
-    "rook": (0, 4),
-    "knight": (2, 2),
-    "obstacles": [(2, 1), (3, 3)]
-}
+board_path = "input-file.txt\\path"
 
-pawns_states = [(4, 1), (4, 3)]
-
-board_size = 5
-problem = Problem(initial=states, pawns=pawns_states, size=board_size)
+problem = Problem(board_state=board_path)
 
 moves = {
     "bishop": problem.move_bishop,
@@ -397,6 +455,10 @@ moves = {
     "knight": problem.move_knight
 }
 
-# uniform_cost_search(problem)
-# greedy_search(problem)
-a_star_search(problem)
+output_file1 = "output_UCS.txt"
+output_file2 = "output_GS.txt"
+output_file3 = "output_AS.txt"
+
+uniform_cost_search(problem, output_file1)
+greedy_search(problem, output_file2)
+a_star_search(problem, output_file3)
